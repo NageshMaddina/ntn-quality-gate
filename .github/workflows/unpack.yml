@@ -1,0 +1,23 @@
+name: Unpack bundle (one-time setup)
+
+on:
+  push:
+    paths: ['bundle.zip']
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack source bundle and commit
+        run: |
+          unzip -o bundle.zip
+          git rm -q bundle.zip
+          git config user.name "github-actions[bot]"
+          git config user.email "41898182+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add NTN quality gate demo source"
+          git push
