@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Simulated satellite (NTN) messaging service run through a system-test release gate: animated network flow, Robot Framework-style tests, KPIs, triage and traceability.">
+<title>NTN Release Gate Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: lab console. Controls on top, live test run on the left, gate verdict on the right, evidence below. */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --sunk:#f5f7f9; --ink:#14202b; --muted:#5b6b78; --line:#d9e0e6;
+  --accent:#1f5fae; --accent-soft:#e3edf9;
+  --terr:#0f7b77; --terr-soft:#e0f2f1; --sat:#4b4fc4; --sat-soft:#e9e9fb; --cross:#c2410c; --cross-soft:#fdeee5;
+  --ok:#17784a; --ok-soft:#e1f2e8; --bad:#b3261e; --bad-soft:#fbe7e5; --warn:#8a5a00; --warn-soft:#fbf1d9;
+  --sans:"IBM Plex Sans",-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f161d; --panel:#16202a; --sunk:#111a22; --ink:#e4ebf1; --muted:#93a3b0; --line:#26333f;
+  --accent:#7fb0f0; --accent-soft:#18304d;
+  --terr:#4fd1c5; --terr-soft:#12302f; --sat:#9da1ff; --sat-soft:#1f2147; --cross:#fb923c; --cross-soft:#3a2214; --ok:#5cd296; --ok-soft:#133224; --bad:#ff8f86; --bad-soft:#3a1916; --warn:#f0c46a; --warn-soft:#352a12; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f161d; --panel:#16202a; --sunk:#111a22; --ink:#e4ebf1; --muted:#93a3b0; --line:#26333f;
+  --accent:#7fb0f0; --accent-soft:#18304d;
+  --terr:#4fd1c5; --terr-soft:#12302f; --sat:#9da1ff; --sat-soft:#1f2147; --cross:#fb923c; --cross-soft:#3a2214; --ok:#5cd296; --ok-soft:#133224; --bad:#ff8f86; --bad-soft:#3a1916; --warn:#f0c46a; --warn-soft:#352a12; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:16px;padding-block:24px 56px;display:grid;gap:20px}
+header{display:flex;flex-wrap:wrap;gap:8px 24px;align-items:end;justify-content:space-between}
+h1{font-size:24px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:2px 0 0;max-width:62ch}
+.tag{font:500 11.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);padding:3px 8px;border-radius:4px}
+h2{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;font-weight:600}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.controls{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
+.seg{display:flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--sunk)}
+.seg label{position:relative;cursor:pointer}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg span{display:block;padding:8px 14px;font-size:14px;color:var(--muted);border-right:1px solid var(--line)}
+.seg label:last-child span{border-right:0}
+.seg input:checked+span{background:var(--panel);color:var(--ink);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent)}
+.seg input:focus-visible+span{outline:2px solid var(--accent);outline-offset:-2px}
+button{font:600 14px var(--sans);background:var(--accent);color:var(--panel);border:0;border-radius:8px;padding:10px 18px;cursor:pointer}
+button:disabled{opacity:.55;cursor:progress}
+button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.linkcfg{font:13px var(--mono);color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:820px){.grid{grid-template-columns:1fr}}
+.tests{list-style:none;margin:0;padding:0;display:grid}
+.tests li{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:10px;align-items:start;padding:9px 2px;border-bottom:1px solid var(--line)}
+.tests li:last-child{border-bottom:0}
+.dot{width:10px;height:10px;border-radius:50%;margin-top:6px;background:var(--line)}
+.st-run .dot{background:var(--accent);animation:pulse 1s infinite}
+.st-pass .dot{background:var(--ok)} .st-fail .dot{background:var(--bad)}
+@keyframes pulse{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.st-run .dot{animation:none}}
+.tname{font-weight:500}
+.tmeta{font:12.5px var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.st-fail .tmeta{color:var(--bad)}
+.req{font:11.5px var(--mono);color:var(--accent)}
+.res{font:600 12.5px var(--mono);white-space:nowrap;color:var(--muted)}
+.st-pass .res{color:var(--ok)} .st-fail .res{color:var(--bad)}
+.verdict{border-radius:10px;padding:18px;display:grid;gap:4px}
+.verdict.PASS{background:var(--ok-soft);color:var(--ok)} .verdict.BLOCK{background:var(--bad-soft);color:var(--bad)}
+.verdict.IDLE{background:var(--sunk);color:var(--muted)}
+.verdict b{font-size:26px;letter-spacing:-.01em}
+.verdict small{font-size:13px;color:var(--ink);opacity:.8}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.kpi{background:var(--sunk);border-radius:8px;padding:10px 12px}
+.kpi div:first-child{font-size:12px;color:var(--muted)}
+.kpi div:last-child{font:600 20px var(--mono);font-variant-numeric:tabular-nums}
+.checks{list-style:none;padding:0;margin:14px 0 0;display:grid;gap:6px}
+.checks li{display:flex;justify-content:space-between;gap:12px;font-size:13.5px}
+.checks .v{font:12.5px var(--mono);white-space:nowrap}
+.pill{display:inline-block;font:600 11.5px var(--mono);padding:2px 8px;border-radius:999px;white-space:nowrap}
+.p-ok{background:var(--ok-soft);color:var(--ok)} .p-bad{background:var(--bad-soft);color:var(--bad)} .p-warn{background:var(--warn-soft);color:var(--warn)}
+.triage{display:grid;gap:10px}
+.tri{border-left:3px solid var(--bad);background:var(--sunk);padding:10px 14px;border-radius:0 8px 8px 0}
+.tri p{margin:4px 0 0}
+.muted{color:var(--muted)}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+td.id{font:12.5px var(--mono);white-space:nowrap}
+.crit{font:500 10.5px var(--mono);color:var(--accent);border:1px solid currentColor;border-radius:3px;padding:0 4px;margin-left:6px;white-space:nowrap}
+.log{font:12px/1.55 var(--mono);background:var(--sunk);border-radius:8px;padding:10px 12px;max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted)}
+.log .e{color:var(--bad)} .log .w{color:var(--warn)}
+footer{font-size:13px;color:var(--muted);max-width:75ch}
+.diag{overflow-x:auto}
+#net{display:block;width:100%;min-width:700px;height:auto}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.cards h2{font-size:13px;letter-spacing:.07em;text-transform:uppercase;margin:0 0 8px;color:var(--muted)}
+.cards ul{margin:0;padding-left:18px;display:grid;gap:6px}
+.k{font-family:var(--mono);font-size:13px}
+.note{font-size:13px;color:var(--muted);max-width:80ch}
+.ctrl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+#replay{font:600 13.5px var(--sans);border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:8px;padding:7px 12px;cursor:pointer}
+#replay:focus-visible{outline:2px solid var(--sat);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){#net .pkt{display:none}}
+.twin h2.big{font-size:20px;letter-spacing:-.01em;text-transform:none;color:var(--ink);margin:0 0 4px}
+.twin .lede2{margin:0 0 12px;color:var(--muted);max-width:72ch}
+.flowhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px 16px}
+.legend{display:flex;gap:14px;font-size:12.5px;color:var(--muted)}
+.lg{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:0}
+.lg.ok{background:var(--ok)} .lg.bad{background:var(--bad)} .lg.ack{background:var(--accent)}
+.flowwrap{overflow-x:auto}
+#flow{display:block;width:100%;min-width:640px;height:auto}
+#flow .link{stroke:var(--line);stroke-width:2;fill:none}
+#flow .link.sat{stroke-dasharray:5 6}
+#flow .link.hot{stroke:var(--accent);stroke-width:2.5}
+#flow .node rect{fill:var(--sunk);stroke:var(--line);stroke-width:1.5;transition:fill .3s,stroke .3s}
+#flow .node.own rect{stroke:var(--accent)}
+#flow .node.down rect{fill:var(--bad-soft);stroke:var(--bad)}
+#flow .node.busy rect{stroke:var(--accent);stroke-width:2.5}
+#flow .node text{fill:var(--ink);font:600 13px var(--sans);text-anchor:middle}
+#flow .node text.sub{fill:var(--muted);font:400 11.5px var(--mono)}
+#flow .pkt{stroke:var(--panel);stroke-width:2}
+#flow .boom{fill:none;stroke:var(--bad);stroke-width:2.5}
+#flow .ftag{font:600 11.5px var(--mono);text-anchor:middle}
+.caption{margin-top:10px;font-size:14px;min-height:2.6em;color:var(--ink)}
+.caption .t{font:500 12.5px var(--mono);color:var(--accent);margin-right:6px}
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>NTN messaging service · release gate lab</h1>
+      <p class="sub">A simulated satellite messaging service run through a system-test quality gate. Pick a build, run the gate, and see whether it ships. <a href="#architecture" style="color:var(--accent)">See how the network maps to a carrier's</a>.</p>
+    </div>
+    <span class="tag">Simulation · GEO link model</span>
+  </header>
+
+  <section class="panel controls" aria-label="Run controls">
+    <div class="seg" role="radiogroup" aria-label="Build under test">
+      <label><input type="radio" name="build" id="b-clean" value="" checked><span>Clean build</span></label>
+      <label><input type="radio" name="build" id="b-sos" value="sos_no_priority"><span>Regression: SOS priority</span></label>
+      <label><input type="radio" name="build" id="b-fo" value="no_failover"><span>Regression: gateway failover</span></label>
+    </div>
+    <button id="run">Run release gate</button>
+    <span class="linkcfg">GEO 270 ms one-way · ±20 ms jitter · 2 ground gateways</span>
+  </section>
+
+  <section class="panel flowpanel" aria-label="Live network flow">
+    <div class="flowhead">
+      <h2>Live network flow</h2>
+      <div class="legend"><span><i class="lg ok"></i>delivered</span><span><i class="lg bad"></i>lost / rejected</span><span><i class="lg ack"></i>reply</span></div>
+    </div>
+    <div class="flowwrap">
+      <svg id="flow" viewBox="0 0 1040 300" role="img" aria-label="Animated message flow from device through satellite, ground gateways, vRAN and core to the partner MNO">
+        <g id="links"></g>
+        <g id="nodes"></g>
+        <g id="fx"></g>
+      </svg>
+    </div>
+    <div class="caption" id="caption" aria-live="polite">Press <b>Run release gate</b> to watch each test drive traffic through the network.</div>
+  </section>
+
+  <div class="grid">
+    <section class="panel" aria-label="Test run">
+      <h2>Test run</h2>
+      <ul class="tests" id="tests"></ul>
+    </section>
+    <section class="panel" aria-label="Gate verdict">
+      <h2>Release gate</h2>
+      <div class="verdict IDLE" id="verdict"><b>Not run</b><small>Run the gate to get a decision.</small></div>
+      <div class="kpis" id="kpis"></div>
+      <ul class="checks" id="checks"></ul>
+    </section>
+  </div>
+
+  <section class="panel" aria-label="Failure triage">
+    <h2>Failure triage</h2>
+    <div class="triage" id="triage"><p class="muted">No failures to triage.</p></div>
+  </section>
+
+  <section class="panel" aria-label="Requirement traceability">
+    <h2>Requirement traceability</h2>
+    <div class="tablewrap"><table><thead><tr><th>ID</th><th>Requirement</th><th>Covered by</th><th>Status</th></tr></thead><tbody id="trace"></tbody></table></div>
+  </section>
+
+  <section class="panel" aria-label="Service log">
+    <h2>Service log (warnings and errors)</h2>
+    <div class="log" id="log">Run the gate to see service log lines.</div>
+  </section>
+
+  <section class="twin" aria-label="Network under test" id="architecture" style="display:grid;gap:16px">
+    <div><h2 class="big">The network under test: the satellite is the cell tower</h2>
+    <p class="lede2">Each row does the same job on both sides. Skylo's satellite, ground gateway and cloud vRAN together play the role of the tower, and Skylo's core joins the carrier's network as a roaming partner. The release gate above validates every row on the right.</p></div>
+  <section class="panel">
+    <div class="ctrl"><button id="replay" type="button">Replay message flow</button><span class="note">Dots show one text message travelling each path. The satellite path is slower on purpose: about 540 ms round trip versus tens of milliseconds.</span></div>
+    <div class="diag"><svg id="net" viewBox="0 0 960 960" role="img" aria-label="Side-by-side diagram: Verizon terrestrial network and Skylo satellite network, aligned layer by layer"></svg></div>
+  </section>
+
+  <section class="cards">
+    <div class="panel"><h2>What stays the same</h2><ul>
+      <li>Same phone, same SIM, same 3GPP signaling (attach, authentication, SMS).</li>
+      <li>The phone sees Skylo as just another cell on another network, the way it sees a roaming partner.</li>
+      <li>Verizon's subscriber record (HSS/UDM) still authenticates the user, and texts still reach Verizon's messaging systems.</li>
+    </ul></div>
+    <div class="panel"><h2>What changes</h2><ul>
+      <li>Distance: a tower is 1–10 km away; a GEO satellite is ~36,000 km up, so ~270 ms each way.</li>
+      <li>The base station runs in Skylo's cloud, not at a mast, and has to absorb long delay, Doppler and timing advance (3GPP Release 17 NTN).</li>
+      <li>Low data rates (NB-IoT NTN): built for SOS, SMS and IoT, not video.</li>
+    </ul></div>
+    <div class="panel"><h2>Why it matters for System Test</h2><ul>
+      <li>Every row on the right is something to validate: device certification, link emulation, vRAN, core, roaming interconnect.</li>
+      <li>The roaming link into Verizon is the partner gate: Verizon must accept a Skylo change before customers see it.</li>
+      <li>Your Verizon experience covers the left side; the right side reuses the same rows.</li>
+    </ul></div>
+  </section>
+
+  <p class="note">Simplified, illustrative architecture based on Skylo's and Verizon's public descriptions. Not an official diagram of either company's network.</p>
+  </section>
+
+  <footer>Built by Nageswara Rao Maddina. Source and CI pipeline: <a style="color:var(--accent)" href="https://github.com/NageshMaddina/ntn-quality-gate">github.com/NageshMaddina/ntn-quality-gate</a>. This page runs the same logic as the Python demo (FastAPI service, Robot Framework suites, gate.yaml thresholds) in the browser so it can be shown without a server. Latencies are simulated GEO values; packet loss is seeded so every run is repeatable. Not real satellite traffic.</footer>
+</div>
+
+<script>
+(function(){
+// ---------- seeded RNG ----------
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+
+// ---------- requirements ----------
+const REQS=[
+ ["REQ-ATT-01","Device with a valid IMSI registers over the satellite link",true],
+ ["REQ-ATT-02","Registration with an invalid IMSI is rejected",true],
+ ["REQ-SMS-01","Registered device sends an SMS and it is delivered",true],
+ ["REQ-SMS-02","Unregistered device cannot send messages",true],
+ ["REQ-SMS-03","Messages over 160 characters are rejected",false],
+ ["REQ-SMS-04","SMS p95 latency stays under 1,500 ms on a clean GEO link",true],
+ ["REQ-SOS-01","SOS messages reach at least 90% delivery at 70% packet loss",true],
+ ["REQ-LNK-01","Failed delivery is reported explicitly, never dropped silently",true],
+ ["REQ-FO-01","Losing the primary gateway fails over with no service interruption",true],
+ ["REQ-FO-02","Full gateway outage returns 503 and service recovers on restore",true],
+ ["REQ-OBS-01","Metrics expose delivery counts, latency and link state",false],
+ ["REQ-ROAM-01","Device roams from a partner MNO's terrestrial network to satellite",false]
+].map(([id,title,critical])=>({id,title,critical}));
+
+// ---------- simulated service ----------
+function makeService(bug){
+  const log=[];
+  const L={delay:270,jitter:20,loss:0,rng:mulberry32(42),gw:{"gw-primary":true,"gw-secondary":true},active:"gw-primary"};
+  const devices=new Set(); const m={sms:[],sosOk:0,sosFail:0,smsOk:0};
+  const avail=()=>L.gw[L.active];
+  function transmit(budget){
+    if(!avail()) return {ok:false,attempts:0,lat:0};
+    let lat=0;
+    for(let a=1;a<=budget;a++){
+      lat+=2*(L.delay+(L.rng()*2-1)*L.jitter);
+      const lost=L.rng()*100<L.loss;
+      if(!lost) return {ok:true,attempts:a,lat};
+    }
+    return {ok:false,attempts:budget,lat};
+  }
+  const svc={
+    log,
+    reset(){L.loss=0;L.rng=mulberry32(42);L.gw={"gw-primary":true,"gw-secondary":true};L.active="gw-primary";devices.clear()},
+    setLink(loss,seed){L.loss=loss;if(seed!=null)L.rng=mulberry32(seed)},
+    register(imsi){
+      if(!/^\d{15}$/.test(imsi)){log.push(["w",`attach rejected imsi=${imsi} reason=invalid_imsi`]);return {code:422}}
+      const r=transmit(4);
+      if(!r.ok){log.push(["e",`attach failed imsi=${imsi} gateway=${L.active} available=${avail()}`]);return {code:503}}
+      devices.add(imsi);return {code:200,state:"REGISTERED",lat:Math.round(r.lat),gateway:L.active};
+    },
+    send(from,text,sos){
+      if(!devices.has(from)){log.push(["w",`sms rejected from=${from} reason=not_registered`]);return {code:403}}
+      if(text.length>160) return {code:422};
+      const budget=sos&&bug!=="sos_no_priority"?8:3; const kind=sos?"sos":"sms";
+      const r=transmit(budget);
+      if(!r.ok){log.push(["e",`${kind} failed from=${from} attempts=${r.attempts} budget=${budget} loss_pct=${L.loss} gateway=${L.active} available=${avail()}`]);
+        if(sos)m.sosFail++;return {code:504,status:"FAILED",attempts:r.attempts,budget}}
+      if(sos)m.sosOk++;else{m.smsOk++;m.sms.push(r.lat)}
+      return {code:200,status:"DELIVERED",attempts:r.attempts,lat:Math.round(r.lat),gateway:L.active};
+    },
+    failGw(n){L.gw[n]=false;if(L.active===n&&bug!=="no_failover"){for(const g in L.gw)if(L.gw[g]){L.active=g;break}}
+      log.push(["w",`gateway failed name=${n} active_now=${L.active} available=${avail()}`])},
+    restoreGw(n){L.gw[n]=true;if(!L.gw[L.active])L.active=n},
+    metrics(){return {sms_delivered:m.smsOk,sms_p95_latency_ms:p95(m.sms),link:{...L,rng:undefined}}}
+  };
+  return svc;
+}
+function p95(v){if(!v.length)return null;const s=[...v].sort((a,b)=>a-b);const pos=(s.length+1)*0.95-1;const lo=Math.max(0,Math.min(s.length-1,Math.floor(pos))),hi=Math.min(s.length-1,lo+1);return Math.round((s[lo]+(s[hi]-s[lo])*(pos-lo))*10)/10}
+const imsi=n=>"00101"+String(n).padStart(10,"0");
+
+// ---------- test suites (mirror tests/*.robot) ----------
+function buildTests(){return [
+ {suite:"Attach",name:"Valid IMSI registers over GEO link",tags:["REQ-ATT-01","critical"],run(s,k){s.reset();const r=s.register(imsi(1));if(r.code!==200)return [false,`HTTP ${r.code}`];if(r.lat<480)return [false,`attach ${r.lat} ms is faster than a GEO round trip`];return [true,`REGISTERED in ${r.lat} ms`]}},
+ {suite:"Attach",name:"Invalid IMSI is rejected",tags:["REQ-ATT-02","critical"],run(s){const a=s.register("12345").code,b=s.register("00101ABCDEFGHIJ").code;return [a===422&&b===422,`HTTP ${a}, ${b}`]}},
+ {suite:"Messaging",name:"Registered device delivers SMS",tags:["REQ-SMS-01","critical"],run(s){s.reset();s.register(imsi(2));const r=s.send(imsi(2),"Hello from orbit",false);return [r.code===200,`${r.status||r.code} · ${r.lat??"-"} ms`]}},
+ {suite:"Messaging",name:"Unregistered device is blocked",tags:["REQ-SMS-02","critical"],run(s){const r=s.send(imsi(999),"hi",false);return [r.code===403,`HTTP ${r.code}`]}},
+ {suite:"Messaging",name:"Oversized message is rejected",tags:["REQ-SMS-03"],run(s){const r=s.send(imsi(2),"x".repeat(161),false);return [r.code===422,`HTTP ${r.code}`]}},
+ {suite:"Messaging",name:"SMS p95 latency within budget on clean link",tags:["REQ-SMS-04","critical"],run(s,k){const lat=[];for(let i=0;i<20;i++){const r=s.send(imsi(2),"ping",false);if(r.code===200)lat.push(r.lat)}const v=p95(lat);k.sms_p95_latency_ms=v;return [v<1500,`p95 ${v} ms over 20 messages (budget 1,500 ms)`]}},
+ {suite:"Messaging",name:"Metrics expose delivery and link state",tags:["REQ-OBS-01"],run(s){const m=s.metrics();return [m.sms_delivered>=20&&m.sms_p95_latency_ms!=null,`${m.sms_delivered} delivered recorded`]}},
+ {suite:"Degraded link",name:"SOS delivery holds under heavy packet loss",tags:["REQ-SOS-01","critical"],run(s,k){s.reset();s.register(imsi(3));s.setLink(70,11);let ok=0;for(let i=0;i<40;i++)if(s.send(imsi(3),"SOS hiker injured",true).code===200)ok++;const pct=Math.round(1000*ok/40)/10;k.sos_delivery_pct=pct;return [pct>=90,`${ok}/40 SOS delivered at 70% loss = ${pct}% (target ≥ 90%)`]}},
+ {suite:"Degraded link",name:"Failed delivery is reported explicitly",tags:["REQ-LNK-01","critical"],run(s){s.setLink(100);const r=s.send(imsi(3),"hi",false);return [r.code===504&&r.status==="FAILED"&&r.attempts===r.budget,`HTTP ${r.code} · ${r.status} after ${r.attempts}/${r.budget} attempts`]}},
+ {suite:"Failover",name:"Primary gateway loss fails over without interruption",tags:["REQ-FO-01","critical"],run(s){s.reset();s.register(imsi(4));s.failGw("gw-primary");const r=s.send(imsi(4),"still there?",false);s.restoreGw("gw-primary");return [r.code===200&&r.gateway==="gw-secondary",r.code===200?`delivered via ${r.gateway}`:`HTTP ${r.code}: service interrupted after primary gateway loss`]}},
+ {suite:"Failover",name:"Total outage returns 503 and recovers",tags:["REQ-FO-02","critical"],run(s){s.failGw("gw-primary");s.failGw("gw-secondary");const a=s.register(imsi(5)).code;s.restoreGw("gw-primary");const b=s.register(imsi(5)).code;s.restoreGw("gw-secondary");return [a===503&&b===200,`outage → HTTP ${a}, after restore → HTTP ${b}`]}}
+]}
+
+// ---------- gate + triage ----------
+function gate(results,k){
+  const rate=ts=>ts.length?Math.round(1000*ts.filter(t=>t.pass).length/ts.length)/10:100;
+  const crit=results.filter(t=>t.tags.includes("critical"));
+  const trace=REQS.map(r=>{const cov=results.filter(t=>t.tags.includes(r.id));return {...r,tests:cov.map(t=>t.name),status:!cov.length?"NOT COVERED":cov.every(t=>t.pass)?"PASS":"FAIL"}});
+  const cr=trace.filter(r=>r.critical);const cov=Math.round(1000*cr.filter(r=>r.status!=="NOT COVERED").length/cr.length)/10;
+  const checks=[
+    ["Critical tests passing",`${rate(crit)}%`,"100%",rate(crit)>=100],
+    ["All tests passing",`${rate(results)}%`,"≥ 95%",rate(results)>=95],
+    ["Critical requirements covered",`${cov}%`,"100%",cov>=100],
+    ["SMS p95 latency",k.sms_p95_latency_ms!=null?`${k.sms_p95_latency_ms} ms`:"—","≤ 1,500 ms",k.sms_p95_latency_ms!=null&&k.sms_p95_latency_ms<=1500],
+    ["SOS delivery at 70% loss",k.sos_delivery_pct!=null?`${k.sos_delivery_pct}%`:"—","≥ 90%",k.sos_delivery_pct!=null&&k.sos_delivery_pct>=90]
+  ];
+  return {decision:checks.every(c=>c[3])?"PASS":"BLOCK",checks,trace};
+}
+function triage(t,log){
+  const text=log.map(l=>l[1]).join(" ");
+  if(/SOS/i.test(t.name))return {cause:/budget=3/.test(text)&&/sos failed/.test(text)?"SOS messages are exhausting a 3-attempt retransmission budget. SOS priority (the extended 8-attempt budget) appears to be missing in this build.":"SOS delivery fell below target under packet loss.",comp:"Core / messaging service",next:"Check the SOS retry and priority configuration before release."};
+  if(/gateway/i.test(t.name))return {cause:/available=false/.test(text)?"Traffic stayed on the failed primary gateway; the standby gateway never took over.":"Gateway failover did not behave as specified.",comp:"Ground gateway",next:"Review gateway health detection and failover logic."};
+  return {cause:"Unclassified failure; review the full test log.",comp:"Test",next:"Open the Robot Framework log for this test."};
+}
+
+// ---------- rendering ----------
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const reqTags=t=>t.tags.filter(x=>x.startsWith("REQ-")).join(" ");
+function renderTests(tests,states){
+  $("tests").innerHTML=tests.map((t,i)=>{const st=states[i]||{s:"wait"};
+    return `<li class="st-${st.s}"><span class="dot" aria-hidden="true"></span><div><div class="tname">${esc(t.name)}</div><div class="req">${esc(t.suite)} · ${esc(reqTags(t))}${t.tags.includes("critical")?" · critical":""}</div>${st.msg?`<div class="tmeta">${esc(st.msg)}</div>`:""}</div><span class="res">${st.s==="pass"?"PASS":st.s==="fail"?"FAIL":st.s==="run"?"running":"queued"}</span></li>`}).join("");
+}
+function renderGate(g,k,results,log,build){
+  const v=$("verdict");v.className="verdict "+g.decision;
+  const failed=results.filter(r=>!r.pass).length;
+  v.innerHTML=g.decision==="PASS"?`<b>Ship it</b><small>All gate checks passed for the ${build}.</small>`:`<b>Release blocked</b><small>${failed} test${failed===1?"":"s"} failed for the ${build}; see triage below.</small>`;
+  const passed=results.filter(r=>r.pass).length;
+  $("kpis").innerHTML=[["Tests passed",`${passed}/${results.length}`],["SMS p95 latency",`${k.sms_p95_latency_ms} ms`],["SOS delivery @ 70% loss",`${k.sos_delivery_pct}%`],["Requirements covered",`${g.trace.filter(r=>r.status!=="NOT COVERED").length}/${g.trace.length}`]].map(([a,b])=>`<div class="kpi"><div>${a}</div><div>${b}</div></div>`).join("");
+  $("checks").innerHTML=g.checks.map(([n,val,tgt,ok])=>`<li><span>${n}</span><span class="v">${esc(val)} <span class="muted">/ ${esc(tgt)}</span> <span class="pill ${ok?"p-ok":"p-bad"}">${ok?"pass":"fail"}</span></span></li>`).join("");
+  const fails=results.filter(r=>!r.pass);
+  $("triage").innerHTML=fails.length?fails.map(f=>{const t=triage(f,log);return `<div class="tri"><strong>${esc(f.name)}</strong> <span class="pill p-bad">blocker</span><p>${esc(t.cause)}</p><p class="muted">Component: ${esc(t.comp)} · Next step: ${esc(t.next)}</p></div>`}).join("")+`<p class="muted" style="margin:0;font-size:13px">Triage engine here: rules. In the repo, setting an API key switches this step to Claude reading the service logs.</p>`:`<p class="muted" style="margin:0">No failures to triage.</p>`;
+  const cls={"PASS":"p-ok","FAIL":"p-bad","NOT COVERED":"p-warn"};
+  $("trace").innerHTML=g.trace.map(r=>`<tr><td class="id">${r.id}</td><td>${esc(r.title)}${r.critical?'<span class="crit">critical</span>':""}</td><td>${esc(r.tests.join(", ")||"—")}</td><td><span class="pill ${cls[r.status]}">${r.status.toLowerCase()}</span></td></tr>`).join("");
+  $("log").innerHTML=log.length?log.slice(-30).map(([lv,m])=>`<span class="${lv}">${lv==="e"?"ERROR  ":"WARN   "}${esc(m)}</span>`).join("\n"):"No warnings or errors.";
+}
+const buildName={"":"clean build","sos_no_priority":"build with the SOS priority regression","no_failover":"build with the gateway failover regression"};
+function execute(bug){const s=makeService(bug),k={},tests=buildTests();const results=tests.map(t=>{const [pass,msg]=t.run(s,k);return {...t,pass,msg}});return {tests,results,k,log:s.log}}
+
+// ---------- animated network flow ----------
+const NS="http://www.w3.org/2000/svg";
+const NODES={dev:{x:80,y:222,t:"Device",s:"phone · IoT"},sat:{x:320,y:52,t:"Satellite",s:"GEO · L-band"},
+  gwA:{x:560,y:150,t:"Gateway A",s:"primary"},gwB:{x:560,y:252,t:"Gateway B",s:"standby"},
+  vran:{x:700,y:200,t:"NTN vRAN",s:"cloud",own:1},core:{x:830,y:200,t:"Core",s:"EPC / 5GC",own:1},mno:{x:965,y:200,t:"MNO",s:"partner"}};
+const LINKS=[["dev","sat",1],["sat","gwA",1],["sat","gwB",1],["gwA","vran"],["gwB","vran"],["vran","core"],["core","mno"]];
+const W=104,H=48,sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const mk=(tag,attrs,parent)=>{const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;};
+const linkEl={},nodeEl={};
+function drawTopology(){
+  const L=$("links"),G=$("nodes");L.innerHTML="";G.innerHTML="";
+  for(const [a,b,sat] of LINKS){linkEl[a+b]=linkEl[b+a]=mk("line",{x1:NODES[a].x,y1:NODES[a].y,x2:NODES[b].x,y2:NODES[b].y,class:"link"+(sat?" sat":"")},L);}
+  mk("text",{x:205,y:120,class:"ftag",fill:"var(--muted)",transform:"rotate(-34 205 120)"},L).textContent="~270 ms each way";
+  for(const id in NODES){const n=NODES[id];const g=mk("g",{class:"node"+(n.own?" own":""),transform:`translate(${n.x-W/2} ${n.y-H/2})`},G);
+    mk("rect",{width:W,height:H,rx:8},g);
+    mk("text",{x:W/2,y:20},g).textContent=n.t;mk("text",{x:W/2,y:37,class:"sub"},g).textContent=n.s;nodeEl[id]=g;}
+}
+const setDown=(id,on)=>nodeEl[id].classList.toggle("down",on);
+const busyNode=(id,on)=>nodeEl[id].classList.toggle("busy",on);
+const caption=(t,h)=>{$("caption").innerHTML=`<span class="t">${esc(t)}</span>${h}`;};
+const COL={ok:"var(--ok)",bad:"var(--bad)",ack:"var(--accent)"};
+function hopTime(a,b){return (a==="sat"||b==="sat")?650:300;}
+function animate(el,from,to,ms,stopAt=1){return new Promise(res=>{const t0=performance.now();
+  const step=t=>{let p=Math.min(1,(t-t0)/ms)*stopAt;const e=p<.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+    el.setAttribute("cx",from.x+(to.x-from.x)*e);el.setAttribute("cy",from.y+(to.y-from.y)*e);
+    if((t-t0)<ms)requestAnimationFrame(step);else res();};requestAnimationFrame(step);});}
+async function boom(x,y){const fx=$("fx");const c=mk("circle",{cx:x,cy:y,r:4,class:"boom"},fx);
+  const x1=mk("path",{d:`M${x-7} ${y-7}L${x+7} ${y+7}M${x+7} ${y-7}L${x-7} ${y+7}`,stroke:"var(--bad)","stroke-width":3},fx);
+  for(let r=4;r<=18;r+=2){c.setAttribute("r",r);c.setAttribute("opacity",1-(r-4)/16);await sleep(25);}c.remove();await sleep(250);x1.remove();}
+// send a packet along a route; loseAt = index of hop where it is lost
+async function send(route,kind="ok",{loseAt=-1,label=""}={}){
+  const fx=$("fx");const p=mk("circle",{r:8,class:"pkt",fill:COL[kind],cx:NODES[route[0]].x,cy:NODES[route[0]].y},fx);
+  let tg=null;if(label){tg=mk("text",{class:"ftag",fill:COL[kind],x:NODES[route[0]].x,y:NODES[route[0]].y-34},fx);tg.textContent=label;}
+  for(let i=0;i<route.length-1;i++){const a=route[i],b=route[i+1],ln=linkEl[a+b];ln&&ln.classList.add("hot");busyNode(b,true);
+    const lost=i===loseAt;await animate(p,NODES[a],NODES[b],hopTime(a,b),lost?.55:1);ln&&ln.classList.remove("hot");busyNode(b,false);
+    if(lost){const x=+p.getAttribute("cx"),y=+p.getAttribute("cy");p.remove();tg&&tg.remove();await boom(x,y);return false;}}
+  p.remove();tg&&tg.remove();return true;}
+const UP=["dev","sat","gwA","vran","core"],UPB=["dev","sat","gwB","vran","core"];
+const back=r=>[...r].reverse();
+async function scenario(i,r,bug){
+  const ok=r.pass;
+  switch(i){
+    case 0: caption("Attach","Device registers over the GEO link. One satellite round trip is about 540 ms.");
+      await send(UP,"ok",{label:"ATTACH"}); await send(back(UP),"ack",{label:"ACCEPT"}); break;
+    case 1: caption("Invalid IMSI","A malformed identity reaches the core and is rejected with HTTP 422.");
+      await send(UP,"ok",{label:"IMSI 12345"}); await send(back(UP),"bad",{label:"REJECT"}); break;
+    case 2: caption("SMS","A registered device sends a text through to the partner MNO.");
+      await send([...UP,"mno"],"ok",{label:"SMS"}); await send(back([...UP,"mno"]),"ack",{label:"DELIVERED"}); break;
+    case 3: caption("Unregistered device","The core blocks traffic from a device that never attached (HTTP 403).");
+      await send(UP,"ok",{label:"SMS ?"}); await send(back(UP),"bad",{label:"403"}); break;
+    case 4: caption("Oversized SMS","Messages over 160 characters are rejected (HTTP 422).");
+      await send(UP,"ok",{label:"161 chars"}); await send(back(UP),"bad",{label:"422"}); break;
+    case 5: caption("Latency KPI","20 messages on a clean link; p95 latency must stay under 1,500 ms.");
+      await Promise.all([0,1,2,3].map(k=>sleep(k*260).then(()=>send([...UP,"mno"],"ok")))); break;
+    case 6: caption("Metrics","The core exposes delivery counts, latency and link state for the gate.");
+      busyNode("core",true);await sleep(700);busyNode("core",false); break;
+    case 7: { caption("SOS at 70% packet loss",bug==="sos_no_priority"
+        ?"This build gives SOS only 3 attempts, the same as normal SMS. Watch it run out."
+        :"SOS gets an extended budget of 8 retransmissions, so it keeps trying until it lands.");
+      const budget=bug==="sos_no_priority"?3:8; const attempts=bug==="sos_no_priority"?3:3;
+      for(let a=1;a<=attempts;a++){const last=a===attempts&&ok;
+        const got=await send([...UP,"mno"],last?"ok":"ok",{loseAt:last?-1:1,label:`SOS try ${a}/${budget}`});
+        if(got)break;}
+      if(!ok){caption("SOS at 70% packet loss","Retry budget exhausted at 3/3. SOS delivery falls to 67.5%, below the 90% requirement.");await sleep(900);}
+      break;}
+    case 8: caption("Link down (100% loss)","Every attempt is lost; the service must report FAILED, not drop silently.");
+      for(let a=1;a<=3;a++)await send(UP,"ok",{loseAt:1,label:`try ${a}/3`});
+      await send(["sat","dev"],"bad",{label:"504 FAILED"}); break;
+    case 9: setDown("gwA",true);
+      if(ok){caption("Gateway failover","Gateway A fails. Traffic switches to standby Gateway B with no interruption.");
+        await send([...UPB,"mno"],"ok",{label:"SMS"});}
+      else{caption("Gateway failover","Gateway A fails but this build never switches to Gateway B. Traffic dies at the failed gateway.");
+        await send(UP,"ok",{loseAt:1,label:"SMS"});await sleep(500);}
+      setDown("gwA",false); break;
+    case 10: caption("Total outage","Both gateways down: attach fails with 503. Restore Gateway A and the device recovers.");
+      setDown("gwA",true);setDown("gwB",true);await send(UP,"ok",{loseAt:1,label:"ATTACH"});
+      await sleep(300);setDown("gwA",false);await send(UP,"ok",{label:"ATTACH"});await send(back(UP),"ack",{label:"ACCEPT"});setDown("gwB",false); break;
+  }
+}
+drawTopology();
+
+let busy=false;
+async function run(animated){
+  if(busy)return;busy=true;$("run").disabled=true;
+  const bug=document.querySelector('input[name=build]:checked').value;
+  const out=execute(bug);
+  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if(animated&&!reduce){
+    $("verdict").className="verdict IDLE";$("verdict").innerHTML="<b>Running…</b><small>Executing suites against the simulated service.</small>";
+    const states=[];
+    for(let i=0;i<out.results.length;i++){states[i]={s:"run"};renderTests(out.tests,states);
+      await scenario(i,out.results[i],bug);
+      states[i]={s:out.results[i].pass?"pass":"fail",msg:out.results[i].msg};renderTests(out.tests,states)}
+  }else{renderTests(out.tests,out.results.map(r=>({s:r.pass?"pass":"fail",msg:r.msg})))}
+  const g=gate(out.results,out.k);
+  renderGate(g,out.k,out.results,out.log,buildName[bug]);
+  if(animated)caption("Release gate",g.decision==="PASS"?"All checks passed. The build is cleared for handoff to Operations.":"Release blocked. See the failed checks and triage below.");
+  busy=false;$("run").disabled=false;
+}
+$("run").addEventListener("click",()=>run(true));
+document.querySelectorAll('input[name=build]').forEach(r=>r.addEventListener("change",()=>run(true)));
+run(false); // open on a completed clean run
+window.__ntn={execute,gate};
+})();
+</script>
+<script>
+(function(){
+const NS="http://www.w3.org/2000/svg", svg=document.getElementById("net");
+const el=(t,a,p=svg)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e;};
+const txt=(x,y,s,a={},p=svg)=>{const e=el("text",Object.assign({x,y},a),p);e.textContent=s;return e;};
+
+const LX=40, RX=620, W=300, H=78;            // lane x and box size
+const ROWS=[150,262,374,486,598,710,830];      // row centres
+const LAYERS=["Device","Air interface","Radio site","Base station","Transport","Core network","Subscriber & services"];
+const L=[ ["phone","Phone","Same handset, same SIM"],
+          ["wave","LTE / 5G radio","Tower 1–10 km away","under 1 ms over the air"],
+          ["tower","Cell tower","Antennas on a mast"],
+          ["chip","eNodeB / gNodeB","Baseband at the site or C-RAN"],
+          ["fiber","Backhaul","Fiber or microwave to the core"],
+          ["core","Verizon core","MME/AMF · SGW/UPF · SMSC"],
+          ["db","Subscriber record","HSS/UDM · billing · SMS · SOS"] ];
+const R=[ ["phone","Phone","Same handset, same SIM"],
+          ["wave","L-band NTN radio","GEO satellite ~36,000 km up","~270 ms each way"],
+          ["sat","Satellite + ground gateway","Relay down to an earth station"],
+          ["cloud","Skylo cloud NTN vRAN","eNB/gNB in software","handles delay, Doppler, timing"],
+          ["fiber","Cloud transport","Gateway to Skylo's cloud"],
+          ["core","Skylo NTN core","Verizon sees a roaming network"],
+          ["link","Roams into Verizon","Home HSS/UDM authenticates","texts reach Verizon's SMSC"] ];
+
+// defs
+const defs=el("defs",{});
+const mk=(id,c)=>{const m=el("marker",{id,viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:7,markerHeight:7,orient:"auto-start-reverse"},defs);el("path",{d:"M0 0L10 5L0 10z",fill:c},m);};
+mk("aT","var(--terr)");mk("aS","var(--sat)");mk("aX","var(--cross)");
+
+// headers
+el("rect",{x:LX,y:30,width:W,height:58,rx:12,fill:"var(--terr)"});
+txt(LX+W/2,56,"Verizon: terrestrial",{fill:"var(--panel)","font-size":18,"font-weight":700,"text-anchor":"middle","font-family":"var(--sans)"});
+txt(LX+W/2,77,"phone → tower → core",{fill:"var(--panel)","font-size":12.5,"text-anchor":"middle","font-family":"var(--mono)"});
+el("rect",{x:RX,y:30,width:W,height:58,rx:12,fill:"var(--sat)"});
+txt(RX+W/2,56,"Skylo: satellite (NTN)",{fill:"var(--panel)","font-size":18,"font-weight":700,"text-anchor":"middle","font-family":"var(--sans)"});
+txt(RX+W/2,77,"phone → satellite → cloud",{fill:"var(--panel)","font-size":12.5,"text-anchor":"middle","font-family":"var(--mono)"});
+
+// "the tower" brackets (rows 1-3 index)
+const top=ROWS[1]-H/2-10, bot=ROWS[3]+H/2+10;
+el("rect",{x:LX-14,y:top,width:W+28,height:bot-top,rx:16,fill:"var(--terr-soft)",stroke:"var(--terr)","stroke-dasharray":"6 6"});
+el("rect",{x:RX-14,y:top,width:W+28,height:bot-top,rx:16,fill:"var(--sat-soft)",stroke:"var(--sat)","stroke-dasharray":"6 6"});
+
+// spine labels + equivalence lines
+ROWS.forEach((y,i)=>{
+  if(i<6)el("line",{x1:LX+W+4,y1:y,x2:RX-4,y2:y,stroke:"var(--line)","stroke-width":1.5,"stroke-dasharray":"2 5"});
+  const pillW=170;const py=i===6?y-30:y;el("rect",{x:480-pillW/2,y:py-15,width:pillW,height:30,rx:15,fill:"var(--panel)",stroke:"var(--line)"});
+  txt(480,py+5,LAYERS[i],{"text-anchor":"middle","font-size":13,"font-weight":600,fill:"var(--muted)","font-family":"var(--sans)"});
+});
+// tower equivalence badge
+const midY=(top+bot)/2;
+el("rect",{x:480-92,y:midY-62,width:184,height:40,rx:10,fill:"var(--cross-soft)",stroke:"var(--cross)"});
+txt(480,midY-46,"Same job:",{"text-anchor":"middle","font-size":12,fill:"var(--cross)","font-weight":600,"font-family":"var(--sans)"});
+txt(480,midY-30,"“the tower”",{"text-anchor":"middle","font-size":14,fill:"var(--ink)","font-weight":700,"font-family":"var(--sans)"});
+el("path",{d:`M${480-92} ${midY-42} H${LX+W+16}`,stroke:"var(--cross)","stroke-width":1.5,fill:"none","marker-end":"url(#aX)"});
+el("path",{d:`M${480+92} ${midY-42} H${RX-16}`,stroke:"var(--cross)","stroke-width":1.5,fill:"none","marker-end":"url(#aX)"});
+
+// icons (drawn in a 40x40 box at x,y)
+function icon(kind,x,y,c){const g=el("g",{transform:`translate(${x} ${y})`,fill:"none",stroke:c,"stroke-width":2,"stroke-linecap":"round","stroke-linejoin":"round"});
+  const P=d=>el("path",{d},g);
+  switch(kind){
+    case "phone":el("rect",{x:11,y:3,width:18,height:34,rx:4},g);P("M18 32h4");break;
+    case "wave":P("M20 30v6");el("circle",{cx:20,cy:26,r:3},g);P("M12 18a11 11 0 0 1 16 0M7 12a18 18 0 0 1 26 0");break;
+    case "tower":P("M20 8L12 38M20 8l8 30M14 28h12M16 20h8");P("M10 10a14 14 0 0 1 0-6M30 10a14 14 0 0 0 0-6");break;
+    case "sat":el("rect",{x:15,y:6,width:10,height:10,rx:2},g);P("M3 6h10v10H3zM27 6h10v10H27z");P("M8 36a12 12 0 0 1 12-12");P("M8 36h12M14 30l-6 6");break;
+    case "chip":el("rect",{x:9,y:9,width:22,height:22,rx:3},g);P("M15 4v5M25 4v5M15 31v5M25 31v5M4 15h5M4 25h5M31 15h5M31 25h5");break;
+    case "cloud":P("M12 30h18a7 7 0 0 0 0-14 10 10 0 0 0-19 2 6 6 0 0 0 1 12z");P("M17 24h8");break;
+    case "fiber":P("M4 14c8 0 8 12 16 12s8-12 16-12");P("M4 26c8 0 8-12 16-12s8 12 16 12");break;
+    case "core":el("rect",{x:6,y:6,width:28,height:8,rx:2},g);el("rect",{x:6,y:16,width:28,height:8,rx:2},g);el("rect",{x:6,y:26,width:28,height:8,rx:2},g);break;
+    case "db":el("ellipse",{cx:20,cy:9,rx:13,ry:4},g);P("M7 9v22c0 2 6 4 13 4s13-2 13-4V9M7 20c0 2 6 4 13 4s13-2 13-4");break;
+    case "link":P("M16 24l8-8");P("M13 19l-4 4a5 5 0 0 0 7 7l4-4M27 21l4-4a5 5 0 0 0-7-7l-4 4");break;
+  }}
+function box(x,y,item,c,soft){const [ic,t,s1,s2]=item;
+  el("rect",{x,y:y-H/2,width:W,height:H,rx:10,fill:"var(--panel)",stroke:c,"stroke-width":1.5});
+  el("rect",{x:x+10,y:y-24,width:48,height:48,rx:10,fill:soft});icon(ic,x+14,y-20,c);
+  txt(x+70,y-(s2?14:6),t,{"font-size":15,"font-weight":600,fill:"var(--ink)","font-family":"var(--sans)"});
+  txt(x+70,y+(s2?5:14),s1,{"font-size":12,fill:"var(--muted)","font-family":"var(--mono)"});
+  if(s2)txt(x+70,y+22,s2,{"font-size":12,fill:"var(--muted)","font-family":"var(--mono)"});}
+
+// vertical connectors
+for(let i=0;i<ROWS.length-1;i++){
+  el("line",{x1:LX+W/2,y1:ROWS[i]+H/2,x2:LX+W/2,y2:ROWS[i+1]-H/2-2,stroke:"var(--terr)","stroke-width":2,"marker-end":"url(#aT)"});
+  if(i<5)el("line",{x1:RX+W/2,y1:ROWS[i]+H/2,x2:RX+W/2,y2:ROWS[i+1]-H/2-2,stroke:"var(--sat)","stroke-width":2,"marker-end":"url(#aS)","stroke-dasharray":i===1?"6 5":null});
+}
+// Skylo core -> roaming box, and roaming -> Verizon subscriber record
+el("line",{x1:RX+W/2,y1:ROWS[5]+H/2,x2:RX+W/2,y2:ROWS[6]-H/2-2,stroke:"var(--cross)","stroke-width":2,"marker-end":"url(#aX)"});
+el("path",{d:`M${RX} ${ROWS[6]+10} H${LX+W+6}`,stroke:"var(--cross)","stroke-width":2.5,fill:"none","marker-end":"url(#aX)"});
+el("rect",{x:480-120,y:ROWS[6]+20,width:240,height:42,rx:8,fill:"var(--cross-soft)",stroke:"var(--cross)"});
+txt(480,ROWS[6]+37,"Roaming interconnect",{"text-anchor":"middle","font-size":12.5,"font-weight":600,fill:"var(--ink)","font-family":"var(--sans)"});
+txt(480,ROWS[6]+54,"authentication + SMS handoff",{"text-anchor":"middle","font-size":11.5,fill:"var(--muted)","font-family":"var(--mono)"});
+
+ROWS.forEach((y,i)=>{box(LX,y,L[i],"var(--terr)","var(--terr-soft)");box(RX,y,R[i],"var(--sat)","var(--sat-soft)");});
+
+// bracket captions
+txt(LX,top-8,"THE TOWER",{"text-anchor":"start","font-size":11.5,"letter-spacing":"1.5",fill:"var(--terr)","font-weight":700,"font-family":"var(--mono)"});
+txt(RX+W,top-8,"SKYLO'S “TOWER”",{"text-anchor":"end","font-size":11.5,"letter-spacing":"1.5",fill:"var(--sat)","font-weight":700,"font-family":"var(--mono)"});
+
+// latency footer
+txt(LX+W/2,930,"≈ 30–50 ms round trip",{"text-anchor":"middle","font-size":13,fill:"var(--terr)","font-weight":600,"font-family":"var(--mono)"});
+txt(RX+W/2,930,"≈ 540 ms+ round trip (GEO)",{"text-anchor":"middle","font-size":13,fill:"var(--sat)","font-weight":600,"font-family":"var(--mono)"});
+
+// animated packets
+const cxL=LX+W/2, cxR=RX+W/2;
+const pathL=`M${cxL} ${ROWS[0]} V${ROWS[6]}`;
+const pathR=`M${cxR} ${ROWS[0]} V${ROWS[6]+10} H${LX+W/2}`;
+const pk=[];
+function packet(d,dur,c,delay){const g=el("g",{class:"pkt"});const ci=el("circle",{r:8,fill:c,stroke:"var(--panel)","stroke-width":2.5},g);
+  const a=el("animateMotion",{path:d,dur:dur+"s",begin:delay+"s",fill:"freeze",calcMode:"spline",keyTimes:"0;1",keySplines:".4 0 .2 1"},ci);
+  ci.setAttribute("cx",0);ci.setAttribute("cy",0);g.setAttribute("opacity",0);
+  setTimeout(()=>g.setAttribute("opacity",1),delay*1000);pk.push(g);return a;}
+function play(){pk.splice(0).forEach(g=>g.remove());
+  packet(pathL,2.2,"var(--terr)",0.2);packet(pathR,6.5,"var(--sat)",0.2);
+  svg.setCurrentTime&&svg.setCurrentTime(0);}
+document.getElementById("replay").addEventListener("click",play);
+play();
+})();
+</script>
+
+</body>
+</html>
