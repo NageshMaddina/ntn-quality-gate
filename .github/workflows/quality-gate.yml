@@ -1,0 +1,32 @@
+name: Release quality gate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      demo_bug:
+        description: "Inject a regression to show the gate blocking (blank, sos_no_priority, no_failover)"
+        required: false
+        default: ""
+
+jobs:
+  system-test:
+    runs-on: ubuntu-latest
+    env:
+      DEMO_BUG: ${{ github.event.inputs.demo_bug }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # optional: enables AI triage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Run system tests and release gate
+        run: bash run_pipeline.sh
+      - name: Publish dashboard and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-results
+          path: results/
