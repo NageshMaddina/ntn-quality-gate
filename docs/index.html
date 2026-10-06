@@ -122,6 +122,23 @@ footer{font-size:13px;color:var(--muted);max-width:75ch}
 #flow .ftag{font:600 11.5px var(--mono);text-anchor:middle}
 .caption{margin-top:10px;font-size:14px;min-height:2.6em;color:var(--ink)}
 .caption .t{font:500 12.5px var(--mono);color:var(--accent);margin-right:6px}
+.pipewrap{overflow-x:auto}
+#pipe{display:block;width:100%;min-width:700px;height:auto}
+#pipe .st rect{fill:var(--sunk);stroke:var(--line);stroke-width:1.5;transition:stroke .3s,fill .3s}
+#pipe .st.gate rect{fill:var(--panel);stroke-dasharray:5 4}
+#pipe .st.mine rect{stroke:var(--accent);stroke-width:2.5;stroke-dasharray:none}
+#pipe .st.done rect{stroke:var(--ok);fill:var(--ok-soft)}
+#pipe .st.stop rect{stroke:var(--bad);fill:var(--bad-soft);stroke-dasharray:none}
+#pipe .st text{fill:var(--ink);font:600 13px var(--sans);text-anchor:middle}
+#pipe .wire{stroke:var(--muted);stroke-width:1.5;fill:none}
+#pipe .lbl{font:500 11.5px var(--mono);fill:var(--muted)}
+#pipe .fail{stroke:var(--bad);stroke-width:1.5;fill:none;stroke-dasharray:3 4}
+#pipe .chip rect{fill:var(--bad-soft);stroke:var(--bad)}
+#pipe .chip text{font:600 11px var(--mono);fill:var(--bad);text-anchor:middle}
+#pipe .chip.hot rect{fill:var(--bad);} #pipe .chip.hot text{fill:var(--panel)}
+#pipe .badge{font:600 11px var(--mono);fill:var(--accent);text-anchor:middle}
+#pipe .tok{fill:var(--accent);stroke:var(--panel);stroke-width:2.5}
+#pipe .note2{font:400 12px var(--sans);fill:var(--muted)}
 </style>
 <style>body{margin:0}</style>
 </head>
@@ -178,6 +195,16 @@ footer{font-size:13px;color:var(--muted);max-width:75ch}
   <section class="panel" aria-label="Failure triage">
     <h2>Failure triage</h2>
     <div class="triage" id="triage"><p class="muted">No failures to triage.</p></div>
+  </section>
+
+  <section class="panel" aria-label="CI/CD release pipeline" id="pipeline">
+    <div class="flowhead">
+      <h2>CI/CD pipeline: where this gate sits</h2>
+      <div class="ctrl" style="margin:0"><button id="pipeplay" type="button">Play pipeline</button></div>
+    </div>
+    <p class="note" style="margin:0 0 10px">Every change moves through these gates in order. The highlighted E2E quality gate is the release gate demonstrated above: a failed gate stops the pipeline and blocks the release until the fix is rerun.</p>
+    <div class="pipewrap"><svg id="pipe" viewBox="0 0 1040 500" role="img" aria-label="CI/CD pipeline from commit through build, quality and security gates, staging, canary and production rollout, with failed gates blocking the release"></svg></div>
+    <div class="caption" id="pipecap" aria-live="polite">Run the release gate above, or press <b>Play pipeline</b>, to send the build through the pipeline.</div>
   </section>
 
   <section class="panel" aria-label="Requirement traceability">
@@ -447,12 +474,90 @@ async function run(animated){
   const g=gate(out.results,out.k);
   renderGate(g,out.k,out.results,out.log,buildName[bug]);
   if(animated)caption("Release gate",g.decision==="PASS"?"All checks passed. The build is cleared for handoff to Operations.":"Release blocked. See the failed checks and triage below.");
+  if(animated&&window.__pipe)window.__pipe.play(g.decision,buildName[bug]);
   busy=false;$("run").disabled=false;
 }
 $("run").addEventListener("click",()=>run(true));
 document.querySelectorAll('input[name=build]').forEach(r=>r.addEventListener("change",()=>run(true)));
 run(false); // open on a completed clean run
 window.__ntn={execute,gate};
+})();
+</script>
+<script>
+(function(){
+const NS="http://www.w3.org/2000/svg", svg=document.getElementById("pipe");
+const el=(t,a,p=svg)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e;};
+const W=152,H=56,R1=70,R2=230,R3=400,C=[130,325,520,715,910];
+// id, lines, x, y, gate?
+const S=[["commit",["Commit / PR"],C[0],R1],["build",["Build & test"],C[1],R1],["appgate",["Application","quality gate"],C[2],R1,1],
+ ["secscan",["Security scans"],C[3],R1],["secgate",["Security gate"],C[4],R1,1],
+ ["pkg",["Package & sign"],C[4],R2],["e2e",["Deploy to test","run E2E tests"],C[3],R2],["e2egate",["E2E quality gate"],C[2],R2,1],
+ ["staging",["Promote to staging"],C[1],R2],["ready",["Deployment","readiness gate"],C[0],R2,1],
+ ["canary",["Canary deployment"],C[0],R3],["health",["Deployment","health gate"],C[1],R3,1],
+ ["prod",["Production rollout"],600,R3-48],["rollback",["Automatic rollback"],600,R3+48]];
+const P={};S.forEach(s=>P[s[0]]={x:s[2],y:s[3]});
+const defs=el("defs",{});const m=el("marker",{id:"pa",viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:7,markerHeight:7,orient:"auto-start-reverse"},defs);el("path",{d:"M0 0L10 5L0 10z",fill:"var(--muted)"},m);
+const wire=(d,lbl,lx,ly,anchor="middle")=>{el("path",{d,class:"wire","marker-end":"url(#pa)"});if(lbl){const t=el("text",{x:lx,y:ly,class:"lbl","text-anchor":anchor});t.textContent=lbl;}};
+const e=(a)=>P[a];
+// row 1 left->right
+wire(`M${e("commit").x+W/2} ${R1}H${e("build").x-W/2-2}`);
+wire(`M${e("build").x+W/2} ${R1}H${e("appgate").x-W/2-2}`);
+wire(`M${e("appgate").x+W/2} ${R1}H${e("secscan").x-W/2-2}`,"Pass",(C[2]+C[3])/2,R1-8);
+wire(`M${e("secscan").x+W/2} ${R1}H${e("secgate").x-W/2-2}`);
+wire(`M${C[4]+W/2} ${R1}H1020V${R2}H${C[4]+W/2+2}`,"Pass",1012,(R1+R2)/2,"end");
+// row 2 right->left
+wire(`M${C[4]-W/2} ${R2}H${C[3]+W/2+2}`);
+wire(`M${C[3]-W/2} ${R2}H${C[2]+W/2+2}`);
+wire(`M${C[2]-W/2} ${R2}H${C[1]+W/2+2}`,"Pass",(C[1]+C[2])/2,R2-8);
+wire(`M${C[1]-W/2} ${R2}H${C[0]+W/2+2}`);
+wire(`M${C[0]-W/2} ${R2}H20V${R3}H${C[0]-W/2-2}`,"Approved",28,(R2+R3)/2+40,"start");
+// row 3
+wire(`M${C[0]+W/2} ${R3}H${C[1]-W/2-2}`);
+wire(`M${C[1]+W/2} ${R3}H450V${R3-48}H${600-W/2-2}`,"Healthy",488,R3-55);
+wire(`M${C[1]+W/2} ${R3}H450V${R3+48}H${600-W/2-2}`,"Unhealthy",488,R3+41);
+// fail stubs + chips under gates (not the health gate, whose failure is the rollback)
+const chips={};
+["appgate","secgate","e2egate","ready"].forEach(id=>{const p=P[id];
+  el("path",{d:`M${p.x} ${p.y+H/2}V${p.y+H/2+14}`,class:"fail"});
+  const g=el("g",{class:"chip"});el("rect",{x:p.x-78,y:p.y+H/2+14,width:156,height:24,rx:12},g);
+  const t=el("text",{x:p.x,y:p.y+H/2+30},g);t.textContent="Fail → block release";chips[id]=g;});
+// stages
+const node={};
+S.forEach(([id,lines,x,y,gate])=>{const g=el("g",{class:"st"+(gate?" gate":"")+(id==="e2egate"?" mine":"")});
+  el("rect",{x:x-W/2,y:y-H/2,width:W,height:H,rx:12},g);
+  lines.forEach((l,i)=>{const t=el("text",{x,y:y+5+(i-(lines.length-1)/2)*16},g);t.textContent=l;});node[id]=g;});
+const b=el("text",{x:C[2],y:R2-H/2-8,class:"badge"});b.textContent="★ THIS DEMO'S RELEASE GATE";
+// block note
+const ng=el("g",{});el("rect",{x:760,y:R3-46,width:250,height:92,rx:12,fill:"var(--bad-soft)",stroke:"var(--bad)"},ng);
+[["Block release · fix & rerun",760+125,R3-18,"600 13px var(--sans)","var(--bad)"],["Any failed gate stops the pipeline.",885,R3+4,"400 12px var(--sans)","var(--ink)"],["Fix, then rerun from the commit.",885,R3+22,"400 12px var(--sans)","var(--ink)"]]
+ .forEach(([s,x,y,f,c])=>{const t=el("text",{x,y,"text-anchor":"middle",style:`font:${f};fill:${c}`},ng);t.textContent=s;});
+// token animation along the stage route
+const ROUTE=["commit","build","appgate","secscan","secgate",{x:1020,y:R1},{x:1020,y:R2},"pkg","e2e","e2egate","staging","ready",{x:20,y:R2},{x:20,y:R3},"canary","health",{x:450,y:R3},{x:450,y:R3-48},"prod"];
+const pt=r=>typeof r==="string"?P[r]:r;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const cap=(t,h)=>{const c=document.getElementById("pipecap");c.innerHTML=`<span class="t">${t}</span>${h}`;};
+let tok=null,playing=0;
+function move(a,b,ms){return new Promise(res=>{const t0=performance.now();const f=t=>{const p=Math.min(1,(t-t0)/ms);tok.setAttribute("cx",a.x+(b.x-a.x)*p);tok.setAttribute("cy",a.y+(b.y-a.y)*p);p<1?requestAnimationFrame(f):res();};requestAnimationFrame(f);});}
+function reset(){Object.values(node).forEach(g=>g.classList.remove("done","stop"));Object.values(chips).forEach(c=>c.classList.remove("hot"));tok&&tok.remove();tok=null;}
+async function play(decision,label){
+  const my=++playing;reset();
+  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  tok=el("circle",{r:9,class:"tok",cx:P.commit.x,cy:P.commit.y});
+  cap("Pipeline",`Running the ${label}…`);
+  let prev=pt(ROUTE[0]);node.commit.classList.add("done");
+  for(let i=1;i<ROUTE.length;i++){if(my!==playing)return;const r=ROUTE[i],p=pt(r);
+    const dist=Math.hypot(p.x-prev.x,p.y-prev.y);if(!reduce)await move(prev,p,Math.max(120,dist*2.2));prev=p;
+    if(typeof r==="string"){
+      if(r==="e2egate"&&decision==="BLOCK"){node[r].classList.add("stop");chips[r].classList.add("hot");tok.setAttribute("style","fill:var(--bad)");
+        cap("Release blocked","The E2E quality gate failed. The build never reaches staging, canary or production; fix and rerun from the commit.");return;}
+      node[r].classList.add("done");if(!reduce)await sleep(node[r].classList.contains("gate")?260:90);}}
+  tok.remove();tok=null;
+  cap("Shipped","Every gate passed: promoted through staging and canary, health gate healthy, production rollout complete.");
+}
+window.__pipe={play};
+document.getElementById("pipeplay").addEventListener("click",()=>{const v=document.querySelector('input[name=build]:checked').value;
+  const out=window.__ntn.execute(v);const g=window.__ntn.gate(out.results,out.k);
+  play(g.decision,{"":"clean build","sos_no_priority":"build with the SOS priority regression","no_failover":"build with the gateway failover regression"}[v]);});
 })();
 </script>
 <script>
