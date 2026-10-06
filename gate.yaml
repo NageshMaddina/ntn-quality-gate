@@ -1,0 +1,7 @@
+# Release gate thresholds. A release ships only if every check passes.
+critical_pass_rate_pct: 100        # every release-critical test must pass
+overall_pass_rate_pct: 95          # non-critical tests may have known issues
+critical_requirement_coverage_pct: 100
+kpis:
+  sms_p95_latency_ms: {max: 1500}
+  sos_delivery_pct_at_70_loss: {min: 90}

@@ -1,0 +1,38 @@
+# Product requirements traced to tests through Robot Framework tags.
+# critical: true  -> must be covered and passing for the release gate.
+- id: REQ-ATT-01
+  title: Device with a valid IMSI registers over the satellite link
+  critical: true
+- id: REQ-ATT-02
+  title: Registration with an invalid IMSI is rejected
+  critical: true
+- id: REQ-SMS-01
+  title: Registered device sends an SMS and it is delivered
+  critical: true
+- id: REQ-SMS-02
+  title: Unregistered device cannot send messages
+  critical: true
+- id: REQ-SMS-03
+  title: Messages over 160 characters are rejected
+  critical: false
+- id: REQ-SMS-04
+  title: SMS p95 latency stays under 1,500 ms on a clean GEO link
+  critical: true
+- id: REQ-SOS-01
+  title: SOS messages reach at least 90% delivery at 70% packet loss
+  critical: true
+- id: REQ-LNK-01
+  title: Failed delivery is reported explicitly, never dropped silently
+  critical: true
+- id: REQ-FO-01
+  title: Losing the primary gateway fails over with no service interruption
+  critical: true
+- id: REQ-FO-02
+  title: Full gateway outage returns 503 and service recovers on restore
+  critical: true
+- id: REQ-OBS-01
+  title: Metrics expose delivery counts, latency and link state
+  critical: false
+- id: REQ-ROAM-01
+  title: Device roams from a partner MNO's terrestrial network to satellite
+  critical: false   # planned; intentionally not yet covered, shows up as a gap
